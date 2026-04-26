@@ -313,7 +313,10 @@ def run_menu():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 1 or sys.argv[1] == "--menu":
+    if len(sys.argv) == 1:
+        # Default action when no arguments: show menu (works with Code Runner)
+        run_menu()
+    elif sys.argv[1] == "--menu":
         run_menu()
     elif sys.argv[1] == "--group-41-50":
         run_group_and_save(41, 50, "resultado_grupo_41_50.txt")

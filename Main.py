@@ -101,10 +101,10 @@ def calculate_operation_start_time(machine_free_time, job_ready_time):
     return max(machine_free_time, job_ready_time)
 
 
-def calculate_makespan_gt(num_jobs, num_machines, processing_times, machine_sequence, rule="MWKR"):
+def calculate_makespan_gt(num_jobs, num_machines, processing_times, machine_sequence):
     """
     Constructive Heuristic using the Giffler & Thompson Algorithm (Active Schedule).
-    Allows choosing between Dispatching Rules: 'SPT' or 'MWKR'.
+    Dispatching Rule: MWKR (Most Work Remaining).
     """
     validate_instance(num_jobs, num_machines, processing_times, machine_sequence)
 
@@ -158,13 +158,9 @@ def calculate_makespan_gt(num_jobs, num_machines, processing_times, machine_sequ
         conflict_set = [op for op in available_ops 
                         if op['machine_id'] == target_machine and op['est'] < min_ect]
 
-        # 4. APPLY DISPATCHING RULE
-        if rule == "MWKR":
-            # MWKR: Prioritizes the job with the MOST total remaining factory work
-            best_op = max(conflict_set, key=lambda x: job_remaining_work[x['job_id']])
-        else:
-            # SPT: Prioritizes the job with the SHORTEST immediate processing time
-            best_op = min(conflict_set, key=lambda x: x['p_time'])
+        # 4. APPLY MWKR DISPATCHING RULE
+        # MWKR: Prioritizes the job with the MOST total remaining factory work
+        best_op = max(conflict_set, key=lambda x: job_remaining_work[x['job_id']])
 
         # 5. Schedule the winning operation and update the simulation
         j_id = best_op['job_id']
@@ -188,10 +184,7 @@ def calculate_makespan_gt(num_jobs, num_machines, processing_times, machine_sequ
 def solve_instance(instance_path):
     """Executes reading + makespan calculation for a single instance."""
     n_jobs, n_machines, p_times, m_sequence = read_taillard_instance(instance_path)
-    
-    # Now you pass the rule you want to test ("MWKR" or "SPT")
-    cmax = calculate_makespan_gt(n_jobs, n_machines, p_times, m_sequence, rule="MWKR")
-    
+    cmax = calculate_makespan_gt(n_jobs, n_machines, p_times, m_sequence)
     return n_jobs, n_machines, cmax
 
 
@@ -202,7 +195,7 @@ def run_single_instance(instance_path):
 
     print(f"Dataset loaded: {n_jobs} jobs and {n_machines} machines.")
     print(f"Instance: {path}")
-    print("Constructive Heuristic - Dispatching Rule: SPT")
+    print("Constructive Heuristic - Dispatching Rule: MWKR")
     print(f"Calculated Makespan (C_max): {cmax}")
 
 
@@ -279,7 +272,7 @@ def parse_instance_input(user_text):
 def run_menu():
     """Main execution menu."""
     while True:
-        print("\n===== JOB SHOP MENU (SPT) =====")
+        print("\n===== JOB SHOP MENU (MWKR) =====")
         print("1 - Run single instance")
         print("2 - Run group 41 to 50")
         print("3 - Run group 71 to 80")

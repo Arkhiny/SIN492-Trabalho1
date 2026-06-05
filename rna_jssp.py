@@ -1,67 +1,71 @@
 import random
+import time
+from pathlib import Path
 
+from Taillard import read_taillard_instance
 from rna_support import (
     evaluate_sequence,
     evaluate_sequence_full,
     find_critical_path,
     find_critical_blocks,
     generate_critical_neighbors,
+    generate_gt_sequence,
 )
 
 
 def random_non_ascending(initial_seq, n_jobs, n_machines, p_times, m_sequence,
-                         iter_max=500, seed=None):
+                         iter_max=100, seed=None):
     """
     Método Não Ascendente Randômico (RNA).
 
-    Differs from VND by accepting any neighbor whose C_max is ≤ the current
-    solution (i.e., equal-cost lateral moves are allowed).  A random eligible
-    neighbor is chosen each iteration, enabling the search to traverse
-    plateaus and escape local optima that trap strict-improvement methods.
+    Aceita qualquer vizinho cujo C_max seja menor ou igual à solução atual (movimentos laterais de custo igual são permitidos).
+    Um vizinho elegível é escolhido aleatoriamente a cada iteração, permitindo
+    que a busca atravesse platôs e escape de ótimos locais que prendem métodos
+    de melhoria estrita.
 
-    The search terminates after *iter_max* consecutive iterations with no
-    improvement to the **global best** solution found so far.
+    A busca termina após *iter_max* iterações consecutivas sem melhoria na
+    **melhor solução global** encontrada até o momento.
 
-    Parameters
+    Parâmetros
     ----------
     initial_seq : list[int]
-        Starting permutation-with-repetition sequence.
+        Sequência inicial de permutação com repetição.
     n_jobs, n_machines : int
-        Problem dimensions.
+        Dimensões do problema.
     p_times : list[list[int]]
-        Processing times matrix.
+        Matriz de tempos de processamento.
     m_sequence : list[list[int]]
-        Machine routing matrix.
-    iter_max : int, optional
-        Maximum consecutive iterations without global improvement before
-        stopping (default 500).
-    seed : int or None, optional
-        Random seed for reproducibility (default None).
+        Matriz de roteamento de máquinas.
+    iter_max : int, opcional
+        Máximo de iterações consecutivas sem melhoria global antes de
+        parar (padrão 500).
+    seed : int ou None, opcional
+        Semente aleatória para reprodutibilidade (padrão None).
 
-    Returns
+    Retorna
     -------
     best_seq : list[int]
-        The best sequence found during the entire search.
+        A melhor sequência encontrada durante toda a busca.
     best_cmax : int
-        Makespan of the best sequence.
+        Makespan da melhor sequência.
     """
     if seed is not None:
         random.seed(seed)
 
-    # Current solution (the one that "walks")
+    # Solução corrente (a que "caminha")
     current_seq = list(initial_seq)
     current_cmax, st, et, mo = evaluate_sequence_full(
         current_seq, n_jobs, n_machines, p_times, m_sequence
     )
 
-    # Global best (may differ from current after lateral moves)
+    # Melhor global (pode diferir da corrente após movimentos laterais)
     best_seq = list(current_seq)
     best_cmax = current_cmax
 
-    no_improve_count = 0  # Consecutive iterations without beating best_cmax
+    no_improve_count = 0  # Iterações consecutivas sem superar best_cmax
 
     while no_improve_count < iter_max:
-        # 1. Extract critical path and blocks from the CURRENT schedule
+        # 1. Extrai caminho crítico e blocos da solução CORRENTE
         critical_path = find_critical_path(
             n_jobs, n_machines, current_cmax, st, et, mo, m_sequence
         )
@@ -69,9 +73,9 @@ def random_non_ascending(initial_seq, n_jobs, n_machines, p_times, m_sequence,
         neighbors = generate_critical_neighbors(current_seq, critical_blocks)
 
         if not neighbors:
-            break  # No neighbors to explore (degenerate case)
+            break  # Sem vizinhos para explorar (caso degenerado)
 
-        # 2. Filter: keep only non-ascending neighbors (cmax <= current)
+        # 2. Filtro: mantém apenas vizinhos não ascendentes (cmax <= corrente)
         eligible = []
         for neighbor in neighbors:
             cmax = evaluate_sequence(neighbor, n_jobs, n_machines, p_times, m_sequence)
@@ -79,26 +83,91 @@ def random_non_ascending(initial_seq, n_jobs, n_machines, p_times, m_sequence,
                 eligible.append((neighbor, cmax))
 
         if not eligible:
-            # All neighbors are worse → stuck in a strict local minimum
+            # Todos os vizinhos são piores → preso em mínimo local estrito
             break
 
-        # 3. Pick one eligible neighbor at random
+        # 3. Escolhe um vizinho elegível aleatoriamente
         chosen_seq, chosen_cmax = random.choice(eligible)
 
-        # 4. Move to the chosen neighbor (lateral or improving)
+        # 4. Move para o vizinho escolhido (lateral ou de melhoria)
         current_seq = chosen_seq
         current_cmax = chosen_cmax
-        # Recompute full schedule info for the new current solution
+        # Recalcula informações completas do escalonamento para a nova solução
         current_cmax, st, et, mo = evaluate_sequence_full(
             current_seq, n_jobs, n_machines, p_times, m_sequence
         )
 
-        # 5. Update global best if this is a strict improvement
+        # 5. Atualiza melhor global se houve melhoria estrita
         if current_cmax < best_cmax:
             best_seq = list(current_seq)
             best_cmax = current_cmax
-            no_improve_count = 0  # Reset counter
+            no_improve_count = 0  # Reseta contador
         else:
             no_improve_count += 1
 
     return best_seq, best_cmax
+
+
+def solve_instance(instance_path):
+    """
+    Solver principal: lê uma instância Taillard, constrói uma solução
+    inicial com G&T + MWKR e a otimiza com RNA (Random Non-Ascending).
+    Executa o algoritmo 1 única vez por chamada.
+    """
+    n_jobs, n_machines, p_times, m_sequence = read_taillard_instance(instance_path)
+
+    initial_seq = generate_gt_sequence(n_jobs, n_machines, p_times, m_sequence)
+
+    best_seq, best_cmax = random_non_ascending(
+        initial_seq, n_jobs, n_machines, p_times, m_sequence
+    )
+
+    return n_jobs, n_machines, best_cmax
+
+
+def solve_instance_safe(instance_path):
+    """Wrapper seguro para execução que mede o tempo de CPU com precisão."""
+    path = Path(instance_path)
+    try:
+        start_time = time.perf_counter()
+
+        _, _, cmax = solve_instance(path)
+
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+
+        return path.name, cmax, execution_time, None
+    except Exception as error:
+        return path.name, None, 0.0, str(error)
+
+
+def solve_instance_gt_only(instance_path):
+    """
+    Lê a instância, constrói a solução usando apenas Giffler & Thompson
+    e avalia o C_max final, ignorando totalmente a busca local.
+    """
+    n_jobs, n_machines, p_times, m_sequence = read_taillard_instance(instance_path)
+
+    # Gera a sequência inicial estática com G&T
+    initial_seq = generate_gt_sequence(n_jobs, n_machines, p_times, m_sequence)
+
+    # Avalia o C_max dessa sequência diretamente
+    cmax = evaluate_sequence(initial_seq, n_jobs, n_machines, p_times, m_sequence)
+
+    return n_jobs, n_machines, cmax
+
+
+def solve_instance_gt_only_safe(instance_path):
+    """Wrapper seguro para rodar apenas o G&T medindo o tempo."""
+    path = Path(instance_path)
+    try:
+        start_time = time.perf_counter()
+
+        _, _, cmax = solve_instance_gt_only(path)
+
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+
+        return path.name, cmax, execution_time, None
+    except Exception as error:
+        return path.name, None, 0.0, str(error)

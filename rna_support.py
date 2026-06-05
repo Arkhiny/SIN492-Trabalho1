@@ -1,7 +1,7 @@
 def evaluate_sequence(sequence, n_jobs, n_machines, processing_times, machine_sequence):
     """
-    Permutation with Repetition Decoder.
-    Calculates the exact Makespan (C_max) of a valid operation sequence.
+    Decodificador de Permutação com Repetição.
+    Calcula o Makespan exato (C_max) de uma sequência válida de operações.
     """
     job_next_op = [0] * n_jobs
     machine_free_time = [0] * n_machines
@@ -15,11 +15,11 @@ def evaluate_sequence(sequence, n_jobs, n_machines, processing_times, machine_se
         machine_id = machine_sequence[job_id][op_idx]
         duration = processing_times[job_id][op_idx]
 
-        # Operation activation rule
+        # Regra de ativação da operação
         start_time = max(machine_free_time[machine_id], job_ready_time[job_id])
         end_time = start_time + duration
 
-        # Update machine and job states
+        # Atualiza estados da máquina e do job
         machine_free_time[machine_id] = end_time
         job_ready_time[job_id] = end_time
         job_next_op[job_id] += 1
@@ -29,20 +29,21 @@ def evaluate_sequence(sequence, n_jobs, n_machines, processing_times, machine_se
 
 def evaluate_sequence_full(sequence, n_jobs, n_machines, processing_times, machine_sequence):
     """
-    Extended Permutation with Repetition Decoder.
-    Returns C_max along with full timing matrices and machine execution order,
-    which are required for critical path extraction.
+    Decodificador de Permutação com Repetição.
+    Retorna o C_max junto com as matrizes completas de temporização
+    e a ordem de execução das máquinas, necessárias para a extração
+    do caminho crítico.
 
-    Returns
+    Retorna
     -------
     cmax : int
         Makespan.
     start_times : list[list[int]]
-        start_times[job_id][op_idx] = start time of that operation.
+        start_times[job_id][op_idx] = instante de início da operação.
     end_times : list[list[int]]
-        end_times[job_id][op_idx] = end time of that operation.
+        end_times[job_id][op_idx] = instante de término da operação.
     machine_order : list[list[tuple]]
-        machine_order[machine_id] = list of (job_id, op_idx) in execution order.
+        machine_order[machine_id] = lista de (job_id, op_idx) na ordem de execução.
     """
     job_next_op = [0] * n_jobs
     machine_free_time = [0] * n_machines
@@ -60,18 +61,18 @@ def evaluate_sequence_full(sequence, n_jobs, n_machines, processing_times, machi
         machine_id = machine_sequence[job_id][op_idx]
         duration = processing_times[job_id][op_idx]
 
-        # Operation activation rule
+        # Regra de ativação da operação
         start_time = max(machine_free_time[machine_id], job_ready_time[job_id])
         end_time = start_time + duration
 
-        # Record timing
+        # Registra temporização
         start_times[job_id][op_idx] = start_time
         end_times[job_id][op_idx] = end_time
 
-        # Record machine execution order
+        # Registra ordem de execução na máquina
         machine_order[machine_id].append((job_id, op_idx))
 
-        # Update machine and job states
+        # Atualiza estados da máquina e do job
         machine_free_time[machine_id] = end_time
         job_ready_time[job_id] = end_time
         job_next_op[job_id] += 1
@@ -82,15 +83,13 @@ def evaluate_sequence_full(sequence, n_jobs, n_machines, processing_times, machi
 
 def generate_gt_sequence(n_jobs, n_machines, processing_times, machine_sequence):
     """
-    Generates an initial solution using the Giffler & Thompson (G&T) algorithm
-    with the MWKR (Most Work Remaining) dispatching rule.
+    Gera uma solução inicial usando o algoritmo de Giffler & Thompson (G&T)
+    com a regra de despacho MWKR (Most Work Remaining).
 
-    Runs the full active-schedule construction and records each scheduling
-    decision into a permutation-with-repetition sequence — the exact format
-    expected by evaluate_sequence and the RNA optimizer.
+    Executa a construção completa de um escalonamento ativo e registra cada
+    decisão de alocação em uma sequência de permutação com repetição — o
+    formato exato esperado por evaluate_sequence e pelo otimizador RNA.
 
-    This produces a high-quality starting point because the sequence directly
-    encodes a feasible active schedule respecting machine conflicts.
     """
     machine_free_time  = [0] * n_machines
     job_available_time = [0] * n_jobs
@@ -99,7 +98,7 @@ def generate_gt_sequence(n_jobs, n_machines, processing_times, machine_sequence)
 
     total_ops     = n_jobs * n_machines
     ops_scheduled = 0
-    sequence      = []   # The permutation-with-repetition sequence being built
+    sequence      = []   
 
     while ops_scheduled < total_ops:
         available_ops = []
@@ -126,22 +125,21 @@ def generate_gt_sequence(n_jobs, n_machines, processing_times, machine_sequence)
         if not available_ops:
             break
 
-        # G&T rule: find the operation with the earliest completion time
+        # Regra G&T: encontra a operação com o menor tempo de conclusão
         min_ect_op     = min(available_ops, key=lambda x: x['ect'])
         min_ect        = min_ect_op['ect']
         target_machine = min_ect_op['machine_id']
 
-        # Conflict set: all operations on the same machine that could
-        # start before the critical operation finishes
+        # Conjunto de conflito: todas as operações na mesma máquina que
+        # poderiam iniciar antes da operação crítica terminar
         conflict_set = [
             op for op in available_ops
             if op['machine_id'] == target_machine and op['est'] < min_ect
         ]
 
-        # MWKR dispatching rule: among conflicts, choose the job with
-        # the most remaining work
-        best_op = max(conflict_set, key=lambda x: job_remaining_work[x['job_id']])
-
+        # Regra de despacho MWKR: entre os conflitos, escolhe o job
+        # com mais trabalho restante
+        best_op = min(conflict_set, key=lambda x: (x['est'], -job_remaining_work[x['job_id']]))
         j_id   = best_op['job_id']
         m_id   = best_op['machine_id']
         p_time = best_op['p_time']
@@ -154,7 +152,7 @@ def generate_gt_sequence(n_jobs, n_machines, processing_times, machine_sequence)
         ops_scheduled             += 1
         job_remaining_work[j_id]  -= p_time
 
-        # Record this scheduling decision into the permutation sequence
+        # Registra esta decisão de alocação na sequência de permutação
         sequence.append(j_id)
 
     return sequence
@@ -163,27 +161,27 @@ def generate_gt_sequence(n_jobs, n_machines, processing_times, machine_sequence)
 def find_critical_path(n_jobs, n_machines, cmax, start_times, end_times,
                        machine_order, machine_sequence):
     """
-    Traces the critical path backwards from C_max to time zero.
+    Rastreia o caminho crítico de trás para frente, de C_max até o tempo zero.
 
-    Starting from the operation whose end_time equals C_max, walks backwards
-    by finding the constraining predecessor (the one whose end_time equals the
-    current operation's start_time).  The predecessor can be:
-      - The previous operation of the same job (job arc).
-      - The previous operation on the same machine (machine/disjunctive arc).
+    Partindo da operação cujo end_time é igual a C_max, percorre para trás
+    encontrando o predecessor restritivo (aquele cujo end_time é igual ao
+    start_time da operação atual). O predecessor pode ser:
+      - A operação anterior do mesmo job (arco de job).
+      - A operação anterior na mesma máquina (arco de máquina/disjuntivo).
 
-    Returns
+    Retorna
     -------
     list[tuple[int, int]]
-        Ordered list [(job_id, op_idx), ...] from the first critical operation
-        to the last one (whose end_time == C_max).
+        Lista ordenada [(job_id, op_idx), ...] da primeira operação crítica
+        até a última (cujo end_time == C_max).
     """
-    # Reverse lookup: (job_id, op_idx) -> (machine_id, position_in_machine_order)
+    # Lookup reverso: (job_id, op_idx) -> (machine_id, posição_na_ordem_da_máquina)
     machine_pos = {}
     for m in range(n_machines):
         for pos, (j, o) in enumerate(machine_order[m]):
             machine_pos[(j, o)] = (m, pos)
 
-    # Find an operation whose end_time == cmax (start of backtracking)
+    # Encontra uma operação cujo end_time == cmax (início do backtracking)
     current = None
     for j in range(n_jobs):
         for o in range(n_machines):
@@ -200,9 +198,9 @@ def find_critical_path(n_jobs, n_machines, cmax, start_times, end_times,
         st = start_times[j][o]
 
         if st == 0:
-            break  # Reached the beginning of the schedule
+            break  # Chegou ao início do escalonamento
 
-        # Check machine predecessor
+        # Verifica predecessor de máquina
         machine_pred = None
         m_id, pos = machine_pos[(j, o)]
         if pos > 0:
@@ -210,19 +208,19 @@ def find_critical_path(n_jobs, n_machines, cmax, start_times, end_times,
             if end_times[prev_j][prev_o] == st:
                 machine_pred = (prev_j, prev_o)
 
-        # Check job predecessor
+        # Verifica predecessor de job
         job_pred = None
         if o > 0 and end_times[j][o - 1] == st:
             job_pred = (j, o - 1)
 
-        # Prefer machine predecessor (keeps us on the same machine → bigger
-        # critical blocks → more swap opportunities).
+        # Prefere o predecessor de máquina (mantém na mesma máquina →
+        # blocos críticos maiores → mais oportunidades de troca).
         if machine_pred is not None:
             current = machine_pred
         elif job_pred is not None:
             current = job_pred
         else:
-            break  # No constraining predecessor found
+            break
 
     path.reverse()
     return path
@@ -230,15 +228,8 @@ def find_critical_path(n_jobs, n_machines, cmax, start_times, end_times,
 
 def find_seq_index(sequence, job_id, occurrence):
     """
-    Index Mapper for the permutation-with-repetition representation.
-
-    Returns the position (index) in *sequence* where *job_id* appears for
-    the (*occurrence*+1)-th time (0-indexed occurrence).
-
-    Example
-    -------
-    >>> find_seq_index([0, 1, 0, 2, 0], job_id=0, occurrence=2)
-    4
+    Retorna a posição (índice) em *sequence* onde *job_id* aparece pela
+    (*occurrence*+1)-ésima vez (occurrence indexado em 0).
     """
     count = 0
     for i, val in enumerate(sequence):
@@ -246,22 +237,21 @@ def find_seq_index(sequence, job_id, occurrence):
             if count == occurrence:
                 return i
             count += 1
-    return -1  # Should never happen with valid input
+    return -1 
 
 
 def find_critical_blocks(critical_path, machine_sequence):
     """
-    Slices the critical path into Critical Blocks.
+    Divide o caminho crítico em Blocos Críticos.
 
-    A critical block is a maximal run of two or more consecutive operations
-    on the critical path that share the **same machine**.  Single-operation
-    "blocks" are discarded because there is nothing to swap inside them.
+    Um bloco crítico é uma sequência máxima de duas ou mais operações
+    consecutivas no caminho crítico que compartilham a **mesma máquina**.
 
-    Returns
+    Retorna
     -------
     list[list[tuple[int, int]]]
-        Each inner list is a block of (job_id, op_idx) tuples processed on the
-        same machine, in the order they appear on the critical path.
+        Cada lista interna é um bloco de tuplas (job_id, op_idx) processadas
+        na mesma máquina
     """
     if not critical_path:
         return []
@@ -283,7 +273,7 @@ def find_critical_blocks(critical_path, machine_sequence):
             current_block = [(j, o)]
             current_machine = m
 
-    # Flush the last block
+    # Descarrega o último bloco
     if len(current_block) >= 2:
         blocks.append(current_block)
 
@@ -292,24 +282,21 @@ def find_critical_blocks(critical_path, machine_sequence):
 
 def generate_critical_neighbors(sequence, critical_blocks):
     """
-    Surgical Neighborhood Generator based on critical blocks.
+    Gerador de vizinhança cirúrgico baseado em blocos críticos.
 
-    For each critical block:
-      - Swap the first two operations  → one neighbor.
-      - Swap the last  two operations  → another neighbor (only if block > 2).
+    Para cada bloco crítico:
+      - Troca as duas primeiras operações → um vizinho.
+      - Troca as duas últimas operações  → outro vizinho (somente se bloco > 2).
 
-    Uses :func:`find_seq_index` to locate the exact positions of each
-    operation inside the permutation-with-repetition sequence.
-
-    Returns
+    Retorna
     -------
     list[list[int]]
-        List of neighbor sequences ready to be evaluated.
+        Lista de sequências vizinhas prontas para avaliação.
     """
     neighbors = []
 
     for block in critical_blocks:
-        # --- Swap first two operations of the block ---
+        # --- Troca as duas primeiras operações do bloco ---
         first_op = block[0]   # (job_id, op_idx)
         second_op = block[1]
 
@@ -320,7 +307,7 @@ def generate_critical_neighbors(sequence, critical_blocks):
         neighbor[idx1], neighbor[idx2] = neighbor[idx2], neighbor[idx1]
         neighbors.append(neighbor)
 
-        # --- Swap last two operations of the block (if block has > 2 ops) ---
+        # --- Troca as duas últimas operações do bloco (se bloco > 2 ops) ---
         if len(block) > 2:
             second_last_op = block[-2]
             last_op = block[-1]
